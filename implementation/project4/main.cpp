@@ -5,451 +5,367 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
-#include <cstdint>
-#include <chrono>
 using namespace std;
 
-using u32 = uint32_t;
-using u64 = uint64_t;
-using u128 = __uint128_t;
-using Big = vector<u32>;
+// ========================== CLASS BigNum ==========================
 
 class BigNum
 {
 private:
-    Big digits;
-
-    void trim()
-    {
-        while (digits.size() > 1 && digits.back() == 0)
-        {
-            digits.pop_back();
-        }
-        if (digits.empty())
-        {
-            digits.push_back(0);
-        }
-    }
-
-    BigNum shift_left(int bits) const
-    {
-        if (bits == 0)
-            return *this;
-        if (isZero())
-            return BigNum(0);
-
-        int wordShift = bits / 32;
-        int bitShift = bits % 32;
-
-        BigNum r;
-        r.digits.resize(digits.size() + wordShift + 1, 0);
-
-        u32 carry = 0;
-        for (size_t i = 0; i < digits.size(); ++i)
-        {
-            u64 cur = ((u64)digits[i] << bitShift) | carry;
-            r.digits[i + wordShift] = (u32)cur;
-            carry = (u32)(cur >> 32);
-        }
-        r.digits[digits.size() + wordShift] = carry;
-        r.trim();
-        return r;
-    }
-
-    BigNum shift_right_1() const
-    {
-        BigNum r = *this;
-        u32 carry = 0;
-        for (int i = (int)r.digits.size() - 1; i >= 0; i--)
-        {
-            u64 cur = ((u64)carry << 32) | r.digits[i];
-            r.digits[i] = (u32)(cur >> 1);
-            carry = (u32)(cur & 1);
-        }
-        r.trim();
-        return r;
-    }
-
-    int find_msb() const
-    {
-        if (isZero())
-            return -1;
-        int lastLimb = digits.size() - 1;
-        u32 msb_limb = digits[lastLimb];
-        int bit_pos = 31;
-        while (bit_pos > 0 && ((msb_limb >> bit_pos) & 1) == 0)
-        {
-            bit_pos--;
-        }
-        return lastLimb * 32 + bit_pos;
-    }
-
-    pair<BigNum, BigNum> divMod(const BigNum &divisor) const
-    {
-        if (divisor.isZero())
-            throw runtime_error("Division by zero");
-
-        BigNum quotient;
-        BigNum remainder;
-        quotient.digits.resize(digits.size(), 0);
-
-        for (int i = (int)digits.size() - 1; i >= 0; i--)
-        {
-
-            remainder = remainder.shift_left(32);
-            remainder = remainder + BigNum((u64)digits[i]);
-
-            u32 quotient_digit = 0;
-            u32 left = 0;
-            u32 right = 0xFFFFFFFF;
-
-            while (left <= right)
-            {
-                u32 mid = left + (right - left) / 2;
-
-                if (mid == 0)
-                {
-                    if (left == 0)
-                        left++;
-                    else
-                        break;
-                }
-
-                BigNum test_product = divisor * BigNum((u64)mid);
-
-                if (test_product.cmp(remainder) <= 0)
-                {
-                    quotient_digit = mid;
-                    left = mid + 1;
-                }
-                else
-                {
-                    right = mid - 1;
-                }
-            }
-
-            quotient.digits[i] = quotient_digit;
-
-            remainder = remainder - divisor * BigNum((u64)quotient_digit);
-        }
-
-        quotient.trim();
-        return {quotient, remainder};
-    }
+    vector<int> digits;
 
 public:
-    BigNum() { digits = {0}; }
+    BigNum();
+    BigNum(long long val);
+    BigNum(string hexStr);
 
-    BigNum(u64 val)
-    {
-        digits.clear();
-        if (val == 0)
-        {
-            digits.push_back(0);
-            return;
-        }
-        digits.push_back((u32)val);
-        if (val >> 32)
-        {
-            digits.push_back((u32)(val >> 32));
-        }
-    }
+    void fromReversedHex(string hexStr);
+    string toReversedHex() const;
+    int cmp(const BigNum &b) const;
+    bool isZero() const;
+    bool isOdd() const;
+    BigNum div2() const;
 
-    BigNum(string hexStr)
-    {
-        fromReversedHex(hexStr);
-    }
+    BigNum operator+(const BigNum &b) const;
+    BigNum operator-(const BigNum &b) const;
+    BigNum operator*(const BigNum &b) const;
+    BigNum operator%(const BigNum &b) const;
+    BigNum operator/(const BigNum &b) const;
+    static BigNum gcd(const BigNum &a, const BigNum &b);
+    static BigNum modInverse(const BigNum &a, const BigNum &m);
+    static BigNum modPow(const BigNum &base, BigNum exp, const BigNum &mod);
 
-    void fromReversedHex(string hexStr)
-    {
-        string s;
-        for (char c : hexStr)
-            if (!isspace((unsigned char)c))
-                s += c;
-
-        size_t pos = s.find_first_not_of('0');
-        if (pos == string::npos)
-        {
-            digits = {0};
-            return;
-        }
-        s = s.substr(pos);
-
-        reverse(s.begin(), s.end());
-
-        if (s.empty())
-        {
-            digits = {0};
-            return;
-        }
-
-        if (s.size() % 8 != 0)
-            s = string(8 - s.size() % 8, '0') + s;
-
-        digits.clear();
-
-        for (int i = (int)s.size() - 8; i >= 0; i -= 8)
-        {
-            string limbHex = s.substr(i, 8);
-            u32 limbVal = 0;
-            for (char c : limbHex)
-            {
-                limbVal <<= 4;
-                if (c >= '0' && c <= '9')
-                    limbVal |= (c - '0');
-                else if (c >= 'a' && c <= 'f')
-                    limbVal |= (c - 'a' + 10);
-                else if (c >= 'A' && c <= 'F')
-                    limbVal |= (c - 'A' + 10);
-            }
-            digits.push_back(limbVal);
-        }
-        trim();
-    }
-
-    string toReversedHex() const
-    {
-        if (isZero())
-            return "0";
-
-        static const char HEX[] = "0123456789ABCDEF";
-        string out;
-
-        for (int i = (int)digits.size() - 1; i >= 0; i--)
-        {
-            u32 b = digits[i];
-            string limbHex;
-            for (int j = 0; j < 8; j++)
-            {
-                limbHex += HEX[(b >> (4 * (7 - j))) & 0xF];
-            }
-            out += limbHex;
-        }
-
-        size_t pos = out.find_first_not_of('0');
-        if (pos == string::npos)
-            return "0";
-        return out.substr(pos);
-    }
-
-    bool isZero() const
-    {
-        return digits.size() == 1 && digits[0] == 0;
-    }
-
-    bool isOdd() const
-    {
-        return digits.empty() ? false : (digits[0] & 1);
-    }
-
-    BigNum div2() const
-    {
-        return shift_right_1();
-    }
-
-    int cmp(const BigNum &b) const
-    {
-        if (digits.size() != b.digits.size())
-            return digits.size() < b.digits.size() ? -1 : 1;
-        for (int i = (int)digits.size() - 1; i >= 0; i--)
-            if (digits[i] != b.digits[i])
-                return digits[i] < b.digits[i] ? -1 : 1;
-        return 0;
-    }
-
-    BigNum operator+(const BigNum &b) const
-    {
-        BigNum r;
-        r.digits.assign(max(digits.size(), b.digits.size()), 0);
-        u64 carry = 0;
-        for (size_t i = 0; i < r.digits.size() || carry; i++)
-        {
-            if (i == r.digits.size())
-                r.digits.push_back(0);
-
-            u64 sum = carry;
-            if (i < digits.size())
-                sum += digits[i];
-            if (i < b.digits.size())
-                sum += b.digits[i];
-
-            r.digits[i] = (u32)sum;
-            carry = sum >> 32;
-        }
-        r.trim();
-        return r;
-    }
-
-    BigNum operator-(const BigNum &b) const
-    {
-        if (cmp(b) < 0)
-            return BigNum(0);
-        BigNum r = *this;
-        u64 borrow = 0;
-        for (size_t i = 0; i < b.digits.size() || borrow; i++)
-        {
-            u64 diff = ((u64)1 << 32) + r.digits[i] - (i < b.digits.size() ? b.digits[i] : 0) - borrow;
-            r.digits[i] = (u32)diff;
-            borrow = (diff >> 32) ? 0 : 1;
-        }
-        r.trim();
-        return r;
-    }
-
-    BigNum operator*(const BigNum &b) const
-    {
-        BigNum result;
-        int n = digits.size();
-        int m = b.digits.size();
-        result.digits.assign(n + m, 0);
-
-        for (size_t i = 0; i < n; i++)
-        {
-            u64 carry = 0;
-
-            for (size_t j = 0; j < m; j++)
-            {
-                u64 product = (u64)digits[i] * (u64)b.digits[j];
-                u64 sum = (u64)result.digits[i + j] + product + carry;
-
-                result.digits[i + j] = (u32)sum;
-                carry = sum >> 32;
-            }
-
-            if (carry > 0)
-            {
-                result.digits[i + m] += (u32)carry;
-            }
-        }
-
-        result.trim();
-        return result;
-    }
-
-    BigNum operator/(const BigNum &b) const
-    {
-        return divMod(b).first;
-    }
-
-    BigNum operator%(const BigNum &b) const
-    {
-        return divMod(b).second;
-    }
-
-    static BigNum modPow(const BigNum &base, BigNum exp, const BigNum &mod)
-    {
-        BigNum result(1);
-        BigNum b = base % mod;
-        BigNum e = exp;
-
-        while (!e.isZero())
-        {
-            if (e.isOdd())
-                result = (result * b) % mod;
-            b = (b * b) % mod;
-            e = e.div2();
-        }
-        return result;
-    }
-
-    /**
-     * Tính nghịch đảo modular của a mod m bằng Extended Euclidean Algorithm
-     * Trả về x sao cho (a * x) mod m = 1
-     */
-    static BigNum modInverse(const BigNum &a, const BigNum &m)
-    {
-        BigNum m0 = m;
-        BigNum x0(0), x1(1);
-        BigNum temp_a = a % m;
-
-        if (m.cmp(BigNum(1)) == 0)
-            return BigNum(0);
-
-        while (temp_a.cmp(BigNum(1)) > 0)
-        {
-            BigNum q = temp_a / m0;
-            BigNum t = m0;
-
-            m0 = temp_a % m0;
-            temp_a = t;
-
-            t = x0;
-            x0 = x1 - q * x0;
-            x1 = t;
-        }
-
-        if (x1.cmp(BigNum(0)) < 0)
-            x1 = x1 + m;
-
-        return x1;
-    }
 };
 
-/**
- * Ký một văn bản bằng ElGamal
- * @param m: Văn bản cần ký (hash của message)
- * @param privateKey: Khóa riêng a
- * @param g: Căn nguyên thủy
- * @param p: Số nguyên tố
- * @param k: Số ngẫu nhiên nguyên tố cùng nhau với p-1
- * @return: Cặp chữ ký (r, s) với r = g^k mod p, s = (m - a*r) * k^(-1) mod (p-1)
- * 
- * Các bước thực hiện:
- * 1. Tính r = g^k mod p (sử dụng modPow)
- * 2. Tính p_minus_1 = p - 1
- * 3. Tính k_inv = k^(-1) mod (p-1) (sử dụng modInverse)
- * 4. Tính a*r mod (p-1)
- * 5. Tính (m - a*r) mod (p-1), xử lý trường hợp âm
- * 6. Tính s = (m - a*r) * k_inv mod (p-1)
- * 7. Trả về {r, s}
- */
-pair<BigNum, BigNum> elgamalSign(const BigNum& m, const BigNum& privateKey,
-                                 const BigNum& g, const BigNum& p, const BigNum& k)
+// ========================== BigNum Implementation ==========================
+
+BigNum::BigNum() { digits = {0}; }
+
+BigNum::BigNum(long long val)
 {
-    // TODO: Implement ElGamal signature
-    // Step 1: r = g^k mod p
-    // Step 2: p_minus_1 = p - 1
-    // Step 3: k_inv = modInverse(k, p_minus_1)
-    // Step 4: ar = (privateKey * r) mod p_minus_1
-    // Step 5: m_mod = m mod p_minus_1
-    // Step 6: diff = (m_mod - ar) mod p_minus_1 (handle negative)
-    // Step 7: s = (diff * k_inv) mod p_minus_1
-    // return {r, s};
+    digits.clear();
+    if (val == 0)
+    {
+        digits.push_back(0);
+        return;
+    }
+    bool negative = val < 0;
+    if (negative)
+        val = -val;
+    while (val > 0)
+    {
+        digits.push_back(val % 256);
+        val /= 256;
+    }
+    if (negative)
+    {
+        digits.push_back(0xFF);
+        digits.push_back(0);
+    }
+}
+
+BigNum::BigNum(string hexStr) { fromReversedHex(hexStr); }
+
+void BigNum::fromReversedHex(string hexStr)
+{
+    string s;
+    for (char c : hexStr)
+        if (!isspace((unsigned char)c))
+            s += c;
+
+    reverse(s.begin(), s.end());
+
+    if (s.empty())
+    {
+        digits = {0};
+        return;
+    }
+    if (s.size() % 2 != 0)
+        s = "0" + s;
+
+    digits.clear();
+    for (int i = static_cast<int>(s.size()) - 2; i >= 0; i -= 2)
+    {
+        char hi_c = s[i];
+        char lo_c = s[i + 1];
+        int hi = isdigit(static_cast<unsigned char>(hi_c)) ? (hi_c - '0')
+                                                           : (toupper(static_cast<unsigned char>(hi_c)) - 'A' + 10);
+        int lo = isdigit(static_cast<unsigned char>(lo_c)) ? (lo_c - '0')
+                                                           : (toupper(static_cast<unsigned char>(lo_c)) - 'A' + 10);
+        digits.push_back(((hi << 4) | lo) & 0xFF);
+    }
+    while (digits.size() > 1 && digits.back() == 0)
+        digits.pop_back();
+}
+
+string BigNum::toReversedHex() const
+{
+    static const char HEX[] = "0123456789ABCDEF";
+    if (digits.empty())
+        return "00";
+
+    string out;
+    for (int i = static_cast<int>(digits.size()) - 1; i >= 0; --i)
+    {
+        int b = digits[i];
+        out += HEX[(b >> 4) & 0xF];
+        out += HEX[b & 0xF];
+    }
+    if (out.empty())
+        return "00";
+    size_t pos = out.find_first_not_of('0');
+    if (pos == string::npos)
+        return "00";
+    return out.substr(pos);
+}
+
+int BigNum::cmp(const BigNum &b) const
+{
+    if (digits.size() != b.digits.size())
+        return digits.size() < b.digits.size() ? -1 : 1;
+    for (int i = digits.size() - 1; i >= 0; i--)
+        if (digits[i] != b.digits[i])
+            return digits[i] < b.digits[i] ? -1 : 1;
+    return 0;
+}
+
+bool BigNum::isZero() const { return digits.empty() || digits.size() == 1 && digits[0] == 0; }
+bool BigNum::isOdd() const { return digits[0] & 1; }
+
+BigNum BigNum::div2() const
+{
+    BigNum r = *this;
+    int carry = 0;
+    for (int i = r.digits.size() - 1; i >= 0; i--)
+    {
+        int cur = r.digits[i] + carry * 256;
+        r.digits[i] = cur / 2;
+        carry = cur % 2;
+    }
+    while (r.digits.size() > 1 && r.digits.back() == 0)
+        r.digits.pop_back();
+    return r;
+}
+
+BigNum BigNum::operator+(const BigNum &b) const
+{
+    BigNum r;
+    r.digits.assign(max(digits.size(), b.digits.size()) + 1, 0);
+    int carry = 0;
+    for (size_t i = 0; i < r.digits.size(); i++)
+    {
+        int sum = carry;
+        if (i < digits.size())
+            sum += digits[i];
+        if (i < b.digits.size())
+            sum += b.digits[i];
+        r.digits[i] = sum % 256;
+        carry = sum / 256;
+    }
+    while (r.digits.size() > 1 && r.digits.back() == 0)
+        r.digits.pop_back();
+    return r;
+}
+
+BigNum BigNum::operator-(const BigNum &b) const
+{
+    BigNum r;
+    r.digits.assign(digits.size(), 0);
+    int borrow = 0;
+    for (size_t i = 0; i < digits.size(); i++)
+    {
+        int diff = digits[i] - (i < b.digits.size() ? b.digits[i] : 0) - borrow;
+        if (diff < 0)
+        {
+            diff += 256;
+            borrow = 1;
+        }
+        else
+            borrow = 0;
+        r.digits[i] = diff;
+    }
+    while (r.digits.size() > 1 && r.digits.back() == 0)
+        r.digits.pop_back();
+    return r;
+}
+
+BigNum BigNum::operator*(const BigNum &b) const
+{
+    BigNum r;
+    r.digits.assign(digits.size() + b.digits.size(), 0);
+    for (size_t i = 0; i < digits.size(); i++)
+    {
+        int carry = 0;
+        for (size_t j = 0; j < b.digits.size() || carry; j++)
+        {
+            long long cur = r.digits[i + j] +
+                            (long long)digits[i] * (j < b.digits.size() ? b.digits[j] : 0) + carry;
+            r.digits[i + j] = cur % 256;
+            carry = cur / 256;
+        }
+    }
+    while (r.digits.size() > 1 && r.digits.back() == 0)
+        r.digits.pop_back();
+    return r;
+}
+
+BigNum BigNum::operator%(const BigNum &m) const
+{
+    if (m.isZero())
+        return BigNum(0);
+    if (this->cmp(m) < 0)
+        return *this;
+
+    BigNum dividend = *this;
+    BigNum divisor = m;
+    BigNum current(0);
+
+    for (int i = dividend.digits.size() - 1; i >= 0; i--)
+    {
+        current = current * BigNum(256);
+        current = current + BigNum(dividend.digits[i]);
+        int x = 0, left = 0, right = 255;
+        while (left <= right)
+        {
+            int mid = (left + right) / 2;
+            BigNum t = divisor * BigNum(mid);
+            if (t.cmp(current) <= 0)
+            {
+                x = mid;
+                left = mid + 1;
+            }
+            else
+                right = mid - 1;
+        }
+        current = current - divisor * BigNum(x);
+    }
+    return current;
+}
+
+BigNum BigNum::operator/(const BigNum &b) const
+{
+    if (b.isZero())
+        throw runtime_error("Division by zero");
+
+    BigNum dividend = *this;
+    BigNum divisor = b;
+    BigNum quotient(0);
+    BigNum current(0);
+
+    for (int i = static_cast<int>(dividend.digits.size()) - 1; i >= 0; i--)
+    {
+        current = current * BigNum(256) + BigNum(dividend.digits[i]);
+        int x = 0, left = 0, right = 255;
+        while (left <= right)
+        {
+            int mid = (left + right) / 2;
+            BigNum t = divisor * BigNum(mid);
+            if (t.cmp(current) <= 0)
+            {
+                x = mid;
+                left = mid + 1;
+            }
+            else
+            {
+                right = mid - 1;
+            }
+        }
+        quotient.digits.insert(quotient.digits.begin(), x);
+        current = current - divisor * BigNum(x);
+    }
+    while (quotient.digits.size() > 1 && quotient.digits.back() == 0)
+        quotient.digits.pop_back();
+    return quotient;
+}
+
+BigNum BigNum::gcd(const BigNum &a, const BigNum &b)
+{
+    if (b.isZero())
+        return a;
+    return gcd(b, a % b);
+}
+
+BigNum BigNum::modInverse(const BigNum &a, const BigNum &m)
+{
+    if (m.isZero())
+        return BigNum(0);
+
+    BigNum aa = a;
+    BigNum mm = m;
+    BigNum m0 = m;
+
+    if (BigNum::gcd(aa, mm).cmp(BigNum(1)) != 0)
+    {
+        return BigNum(0);
+    }
+
+    BigNum x0(1), x1(0);
+
+    while (!mm.isZero())
+    {
+        BigNum q = aa / mm;
+
+        BigNum t = mm;
+        mm = aa % mm;
+        aa = t;
+
+        BigNum qx1 = (q * x1) % m0;
+        BigNum newx = (x0 + m0 - qx1) % m0;
+
+        x0 = x1;
+        x1 = newx;
+    }
+
+    BigNum inv = x0 % m0;
+    return inv;
+}
+
+BigNum BigNum::modPow(const BigNum &base, BigNum exp, const BigNum &mod)
+{
+    BigNum result(1);
+    BigNum b = base % mod;
+    BigNum e = exp;
+
+    while (!e.isZero())
+    {
+        if (e.isOdd())
+            result = (result * b) % mod;
+        b = (b * b) % mod;
+        e = e.div2();
+    }
+    return result;
 }
 
 /**
  * Xác thực chữ ký ElGamal
- * @param m: Văn bản gốc (hash của message)
- * @param r: Phần thứ nhất của chữ ký
- * @param s: Phần thứ hai của chữ ký
- * @param publicKey: Khóa công khai h = g^a mod p
- * @param g: Căn nguyên thủy
- * @param p: Số nguyên tố
- * @return: true nếu chữ ký hợp lệ (g^m ≡ h^r * r^s (mod p))
- * 
- * Các bước thực hiện:
- * 1. Kiểm tra 0 < r < p, nếu không thỏa trả về false
- * 2. Tính left = g^m mod p (sử dụng modPow)
- * 3. Tính h^r mod p (sử dụng modPow)
- * 4. Tính r^s mod p (sử dụng modPow)
- * 5. Tính right = (h^r * r^s) mod p
- * 6. So sánh left == right, trả về kết quả
- * 
- * Giải thích:
- * - Từ s = (m - a*r) * k^(-1) mod (p-1)
- * - Suy ra: m = a*r + k*s mod (p-1)
- * - Do đó: g^m = g^(a*r + k*s) = (g^a)^r * (g^k)^s = h^r * r^s mod p
  */
-bool elgamalVerify(const BigNum& m, const BigNum& r, const BigNum& s,
-                   const BigNum& publicKey, const BigNum& g, const BigNum& p)
+bool elgamalVerify(const BigNum &m, const BigNum &r, const BigNum &s,
+                   const BigNum &publicKey, const BigNum &g, const BigNum &p)
 {
-    // TODO: Implement ElGamal signature verification
     // Step 1: Check 0 < r < p
+    // r phải lớn hơn 0 và nhỏ hơn p
+    if (r.cmp(BigNum(0)) <= 0 || r.cmp(p) >= 0)
+    {
+        cout << "Invalid r value" << endl;
+        return false;
+    }
+
     // Step 2: left = g^m mod p
+    BigNum left = BigNum::modPow(g, m, p);
     // Step 3: hr = publicKey^r mod p
+    BigNum hr = BigNum::modPow(publicKey, r, p);
+
     // Step 4: rs = r^s mod p
+    BigNum rs = BigNum::modPow(r, s, p);
+
     // Step 5: right = (hr * rs) mod p
+    BigNum right = (hr * rs) % p;
+
+    cout << "left: " << left.toReversedHex() << endl;
+    cout << "right: " << right.toReversedHex() << endl;
+
     // Step 6: return left == right
+    return left.cmp(right) == 0;
 }
 
 int main(int argc, char *argv[])
@@ -470,25 +386,29 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    string p_hex, g_hex, a_hex, m_hex, k_hex, r_hex;
-    inputFile >> p_hex >> g_hex >> a_hex >> m_hex >> k_hex >> r_hex;
+    string p_hex, g_hex, y_hex, m_hex, r_hex, h_hex;
+    inputFile >> p_hex >> g_hex >> y_hex >> m_hex >> r_hex >> h_hex;
     inputFile.close();
 
     BigNum p(p_hex);
     BigNum g(g_hex);
-    BigNum a(a_hex);      // Khóa riêng
-    BigNum m(m_hex);      // Văn bản cần ký
-    BigNum k(k_hex);      // Số ngẫu nhiên
-    BigNum r_verify(r_hex); // Giá trị r để xác thực (nếu có)
-    
-    // Tính khóa công khai h = g^a mod p
-    BigNum h = BigNum::modPow(g, a, p);
-    
-    // Ký văn bản
-    auto [r, s] = elgamalSign(m, a, g, p, k);
-    
-    // Xác thực chữ ký
-    bool isValid = elgamalVerify(m, r, s, h, g, p);
+    BigNum publicKey(y_hex); // Đây là y
+    BigNum m(m_hex);
+    BigNum r(r_hex);
+    BigNum s(h_hex); // Trong ảnh gọi là
+
+    // Thực hiện xác thực
+    // Lưu ý: Hàm elgamalVerify cần code lại hoặc giữ nguyên logic nhưng truyền đúng tham số
+    // Verify check: g^m = y^r * r^s (mod p)
+    cout << "input are:" << endl;
+    cout << "p: " << p.toReversedHex() << endl;
+    cout << "g: " << g.toReversedHex() << endl;
+    cout << "y: " << publicKey.toReversedHex() << endl;
+    cout << "m: " << m.toReversedHex() << endl;
+    cout << "r: " << r.toReversedHex() << endl;
+    cout << "s: " << s.toReversedHex() << endl;
+
+    bool isValid = elgamalVerify(m, r, s, publicKey, g, p);
 
     ofstream outputFile(output_path);
     if (!outputFile.is_open())
