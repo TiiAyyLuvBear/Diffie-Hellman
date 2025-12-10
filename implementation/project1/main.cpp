@@ -32,6 +32,7 @@ public:
     BigNum operator*(const BigNum &b) const;
     BigNum operator%(const BigNum &b) const;
     BigNum operator/(const BigNum &b) const;
+    static BigNum modPow(const BigNum &base, const BigNum &exp, const BigNum &mod);
     const vector<int> &getDigits() const { return digits; }
 };
 
@@ -266,15 +267,18 @@ BigNum BigNum::operator/(const BigNum &b) const
     return quotient;
 }
 
-BigNum modPow(BigNum base, BigNum exp, const BigNum &mod)
+BigNum BigNum::modPow(const BigNum &base, const BigNum &exp, const BigNum &mod)
 {
     BigNum result(1);
-    while (!exp.isZero())
+    BigNum b = base % mod;
+    BigNum e = exp;
+    
+    while (!e.isZero())
     {
-        if (exp.isOdd())
-            result = (result * base) % mod;
-        exp = exp.div2();
-        base = (base * base) % mod;
+        if (e.isOdd())
+            result = (result * b) % mod;
+        e = e.div2();
+        b = (b * b) % mod;
     }
     return result;
 }
@@ -297,6 +301,96 @@ string toDecimalString(BigNum x)
     return s;
 }
 
+// ========================== CLASS PrimitiveRootChecker ==========================
+
+class PrimitiveRootChecker {
+private:
+    BigNum p;
+    BigNum g;
+    BigNum pMinus1;
+    vector<BigNum> U;
+    bool result;
+
+public:
+    bool readInput(const string &filename);
+    void check();
+    void writeOutput(const string &filename);
+    
+    BigNum getP() const { return p; }
+    BigNum getG() const { return g; }
+    BigNum getPMinus1() const { return pMinus1; }
+    const vector<BigNum>& getU() const { return U; }
+    bool getResult() const { return result; }
+};
+
+// ========================== PrimitiveRootChecker Implementation ==========================
+
+bool PrimitiveRootChecker::readInput(const string &filename) {
+    ifstream fin(filename);
+    if (!fin) return false;
+
+    string pStr, nStr;
+    getline(fin, pStr);
+    getline(fin, nStr);
+
+    p = BigNum(pStr);
+    BigNum one(1);
+    pMinus1 = p - one;
+
+    string line;
+    getline(fin, line);
+    stringstream ss(line);
+    string t;
+    while (ss >> t)
+        U.push_back(BigNum(t));
+
+    string gStr;
+    getline(fin, gStr);
+    g = BigNum(gStr);
+    
+    fin.close();
+    return true;
+}
+
+void PrimitiveRootChecker::check() {
+    cout << "p        = " << p.toReversedHex() << "\n";
+    cout << "g        = " << g.toReversedHex() << "\n";
+    cout << "p - 1    = " << pMinus1.toReversedHex() << "\n";
+
+    cout << "\nU(p) = ";
+    for (auto &k : U) {
+        cout << toDecimalString(k) << " ";
+    }
+    cout << "\n\n";
+
+    result = true;
+    for (auto &k : U) {
+        BigNum exp = pMinus1 / k;
+        BigNum res = BigNum::modPow(g, exp, p);
+
+        cout << "k       = " << k.toReversedHex() << "\n";
+        cout << "(p-1)/k = " << exp.toReversedHex() << "\n";
+        cout << "g^((p-1)/k) mod p = " << res.toReversedHex() << "\n\n";
+
+        if (res.cmp(BigNum(1)) == 0) {
+            result = false;
+            break;
+        }
+    }
+}
+
+void PrimitiveRootChecker::writeOutput(const string &filename) {
+    ofstream fout(filename);
+    if (!fout) return;
+    
+    fout << (result ? 1 : 0) << "\n";
+    fout.close();
+    
+    cout << "Result written to output file: " << (result ? 1 : 0) << "\n";
+}
+
+// ========================== MAIN FUNCTION ==========================
+
 int main(int argc, char *argv[])
 {
     ios::sync_with_stdio(false);
@@ -308,69 +402,19 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    ifstream fin(argv[1]);
-    if (!fin)
+    PrimitiveRootChecker checker;
+    
+    if (!checker.readInput(argv[1]))
     {
         cerr << "Cannot open input file\n";
         return 1;
     }
+    
+    // Check if g is a primitive root of p
+    checker.check();
+    
+    // Write result to output file
+    checker.writeOutput(argv[2]);
 
-    ofstream fout(argv[2]);
-    if (!fout)
-    {
-        cerr << "Cannot open output file\n";
-        return 1;
-    }
-
-    string pStr, nStr;
-    getline(fin, pStr);
-    getline(fin, nStr);
-
-    BigNum p(pStr);
-    BigNum one(1);
-    BigNum pMinus1 = p - one;
-
-    string line;
-    getline(fin, line);
-    stringstream ss(line);
-    vector<BigNum> U;
-    string t;
-    while (ss >> t)
-        U.push_back(BigNum(t));
-
-    string gStr;
-    getline(fin, gStr);
-    BigNum g(gStr);
-
-    cout << "p        = " << p.toReversedHex() << "\n";
-    cout << "g        = " << g.toReversedHex() << "\n";
-    cout << "p - 1    = " << pMinus1.toReversedHex() << "\n";
-
-    cout << "\nU(p) = ";
-    for (auto &k : U)
-    {
-        cout << toDecimalString(k) << " ";
-    }
-    cout << "\n\n";
-
-    bool isPrimitive = true;
-    for (auto &k : U)
-    {
-        BigNum exp = pMinus1 / k;
-        BigNum res = modPow(g, exp, p);
-
-        cout << "k       = " << k.toReversedHex() << "\n";
-        cout << "(p-1)/k = " << exp.toReversedHex() << "\n";
-        cout << "g^((p-1)/k) mod p = " << res.toReversedHex() << "\n\n";
-
-        if (res.cmp(BigNum(1)) == 0)
-        {
-            isPrimitive = false;
-            break;
-        }
-    }
-
-    fout << (isPrimitive ? 1 : 0) << "\n";
-    cout << "Result written to output file: " << (isPrimitive ? 1 : 0) << "\n";
     return 0;
 }

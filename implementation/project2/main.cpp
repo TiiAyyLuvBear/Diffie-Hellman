@@ -28,6 +28,7 @@ public:
     BigNum operator*(const BigNum &b) const;
     BigNum operator%(const BigNum &b) const;
     BigNum operator/(const BigNum &b) const;
+    static BigNum modPow(const BigNum &base, const BigNum &exp, const BigNum &mod);
     const vector<int> &getDigits() const { return digits; }
 };
 
@@ -262,15 +263,18 @@ BigNum BigNum::operator/(const BigNum &b) const
     return quotient;
 }
 
-BigNum modPow(BigNum base, BigNum exp, const BigNum &mod)
+BigNum BigNum::modPow(const BigNum &base, const BigNum &exp, const BigNum &mod)
 {
     BigNum result(1);
-    while (!exp.isZero())
+    BigNum b = base % mod;
+    BigNum e = exp;
+    
+    while (!e.isZero())
     {
-        if (exp.isOdd())
-            result = (result * base) % mod;
-        exp = exp.div2();
-        base = (base * base) % mod;
+        if (e.isOdd())
+            result = (result * b) % mod;
+        e = e.div2();
+        b = (b * b) % mod;
     }
     return result;
 }
@@ -282,6 +286,86 @@ string reverseHex(const string &s)
     return t;
 }
 
+// ========================== CLASS DiffieHellmanKeyExchange ==========================
+
+class DiffieHellmanKeyExchange {
+private:
+    BigNum p;  // Prime modulus
+    BigNum g;  // Generator
+    BigNum a;  // Alice's private key
+    BigNum b;  // Bob's private key
+    BigNum A;  // Alice's public key: A = g^a mod p
+    BigNum B;  // Bob's public key: B = g^b mod p
+    BigNum K;  // Shared secret key: K = A^b mod p = B^a mod p
+
+public:
+    bool readInput(const string &filename);
+    void computeKeys();
+    void writeOutput(const string &filename);
+    
+    BigNum getP() const { return p; }
+    BigNum getG() const { return g; }
+    BigNum getA() const { return a; }
+    BigNum getB() const { return b; }
+    BigNum getPublicA() const { return A; }
+    BigNum getPublicB() const { return B; }
+    BigNum getSharedKey() const { return K; }
+};
+
+// ========================== DiffieHellmanKeyExchange Implementation ==========================
+
+bool DiffieHellmanKeyExchange::readInput(const string &filename) {
+    ifstream fin(filename);
+    if (!fin) return false;
+
+    string pStr, gStr, aStr, bStr;
+    getline(fin, pStr);
+    getline(fin, gStr);
+    getline(fin, aStr);
+    getline(fin, bStr);
+
+    p = BigNum(pStr);
+    g = BigNum(gStr);
+    a = BigNum(aStr);
+    b = BigNum(bStr);
+    
+    fin.close();
+    return true;
+}
+
+void DiffieHellmanKeyExchange::computeKeys() {
+    cout << "Input values:\n";
+    cout << "p = " << p.toReversedHex() << "\n";
+    cout << "g = " << g.toReversedHex() << "\n";
+    cout << "a = " << a.toReversedHex() << "\n";
+    cout << "b = " << b.toReversedHex() << "\n\n";
+
+    // Compute public keys
+    A = BigNum::modPow(g, a, p);
+    B = BigNum::modPow(g, b, p);
+    
+    // Compute shared secret key
+    K = BigNum::modPow(A, b, p);
+
+    cout << "Output values:\n";
+    cout << "A = " << reverseHex(A.toReversedHex()) << "\n";
+    cout << "B = " << reverseHex(B.toReversedHex()) << "\n";
+    cout << "K = " << reverseHex(K.toReversedHex()) << "\n\n";
+}
+
+void DiffieHellmanKeyExchange::writeOutput(const string &filename) {
+    ofstream fout(filename);
+    if (!fout) return;
+    
+    fout << reverseHex(A.toReversedHex()) << "\n";
+    fout << reverseHex(B.toReversedHex()) << "\n";
+    fout << reverseHex(K.toReversedHex()) << "\n";
+    
+    fout.close();
+}
+
+// ========================== MAIN FUNCTION ==========================
+
 int main(int argc, char *argv[])
 {
     ios::sync_with_stdio(false);
@@ -289,58 +373,23 @@ int main(int argc, char *argv[])
 
     if (argc < 3)
     {
-        cerr << "Usage: program inputFile outputFile\n";
+        cerr << "Usage: " << argv[0] << " inputFile outputFile\n";
         return 1;
     }
 
-    ifstream fin(argv[1]);
-    if (!fin)
+    DiffieHellmanKeyExchange dh;
+    
+    if (!dh.readInput(argv[1]))
     {
         cerr << "Cannot open input file\n";
         return 1;
     }
-
-    ofstream fout(argv[2]);
-    if (!fout)
-    {
-        cerr << "Cannot open output file\n";
-        return 1;
-    }
-
-    string pStr, gStr, aStr, bStr;
-
-    getline(fin, pStr);
-    getline(fin, gStr);
-    getline(fin, aStr);
-    getline(fin, bStr);
-
-    BigNum p(pStr);
-    BigNum g(gStr);
-    BigNum a(aStr);
-    BigNum b(bStr);
-
-    cout << "Input values:\n";
-    cout << "p = " << p.toReversedHex() << "\n";
-    cout << "g = " << g.toReversedHex() << "\n";
-    cout << "a = " << a.toReversedHex() << "\n";
-    cout << "b = " << b.toReversedHex() << "\n\n";
-
-    BigNum A = modPow(g, a, p);
-    BigNum B = modPow(g, b, p);
-    BigNum K = modPow(A, b, p);
-
-    string Aout = reverseHex(A.toReversedHex());
-    string Bout = reverseHex(B.toReversedHex());
-    string Kout = reverseHex(K.toReversedHex());
-
-    cout << "Output values:\n";
-    cout << "A = " << Aout << "\n";
-    cout << "B = " << Bout << "\n";
-    cout << "K = " << Kout << "\n\n";
-
-    fout << Aout << "\n";
-    fout << Bout << "\n";
-    fout << Kout << "\n";
+    
+    // Compute public keys and shared secret
+    dh.computeKeys();
+    
+    // Write output: A, B, K
+    dh.writeOutput(argv[2]);
 
     return 0;
 }
