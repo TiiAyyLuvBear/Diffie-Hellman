@@ -335,38 +335,75 @@ BigNum BigNum::modPow(const BigNum &base, BigNum exp, const BigNum &mod)
     }
     return result;
 }
-
-/**
- * Xác thực chữ ký ElGamal
- */
-bool elgamalVerify(const BigNum &m, const BigNum &r, const BigNum &s,
-                   const BigNum &publicKey, const BigNum &g, const BigNum &p)
+class ElgamalVerifier
 {
-    // Step 1: Check 0 < r < p
-    // r phải lớn hơn 0 và nhỏ hơn p
-    if (r.cmp(BigNum(0)) <= 0 || r.cmp(p) >= 0)
+private:
+    BigNum p, g, y;
+    BigNum m, r, s;
+
+public:
+    // Đọc dữ liệu đầu vào
+    bool readInput(const string &input_path)
     {
-        cout << "Invalid r value" << endl;
-        return false;
+        ifstream inputFile(input_path);
+        if (!inputFile.is_open())
+        {
+            cerr << "Error: Cannot open input file " << input_path << endl;
+            return false;
+        }
+
+        string p_hex, g_hex, y_hex, m_hex, r_hex, s_hex;
+        inputFile >> p_hex >> g_hex >> y_hex >> m_hex >> r_hex >> s_hex;
+        inputFile.close();
+
+        p = BigNum(p_hex);
+        g = BigNum(g_hex);
+        y = BigNum(y_hex);
+        m = BigNum(m_hex);
+        r = BigNum(r_hex);
+        s = BigNum(s_hex);
+
+        return true;
     }
 
-    // Step 2: left = g^m mod p
-    BigNum left = BigNum::modPow(g, m, p);
-    // Step 3: hr = publicKey^r mod p
-    BigNum hr = BigNum::modPow(publicKey, r, p);
+    // Hàm verify như bạn có, giữ nguyên logic
+    bool elgamalVerify() const
+    {
+        if (r.cmp(BigNum(0)) <= 0 || r.cmp(p) >= 0)
+        {
+            cout << "Invalid r value" << endl;
+            return false;
+        }
 
-    // Step 4: rs = r^s mod p
-    BigNum rs = BigNum::modPow(r, s, p);
+        if (s.cmp(BigNum(0)) <= 0 || s.cmp(p - BigNum(1)) >= 0)
+        {
+            cout << "Invalid s value" << endl;
+            return false;
+        }
 
-    // Step 5: right = (hr * rs) mod p
-    BigNum right = (hr * rs) % p;
+        BigNum left = BigNum::modPow(g, m, p);
+        BigNum hr   = BigNum::modPow(y, r, p);
+        BigNum rs   = BigNum::modPow(r, s, p);
+        BigNum right = (hr * rs) % p;
 
-    cout << "left: " << left.toReversedHex() << endl;
-    cout << "right: " << right.toReversedHex() << endl;
+        return left.cmp(right) == 0;
+    }
 
-    // Step 6: return left == right
-    return left.cmp(right) == 0;
-}
+    // Ghi output
+    bool writeOutput(const string &output_path, bool result)
+    {
+        ofstream outputFile(output_path);
+        if (!outputFile.is_open())
+        {
+            cerr << "Error: Cannot open output file " << output_path << endl;
+            return false;
+        }
+
+        outputFile << (result ? "1" : "0");
+        outputFile.close();
+        return true;
+    }
+};
 
 int main(int argc, char *argv[])
 {
@@ -376,50 +413,16 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    string input_path = argv[1];
-    string output_path = argv[2];
+    ElgamalVerifier verifier;
 
-    ifstream inputFile(input_path);
-    if (!inputFile.is_open())
-    {
-        cerr << "Error: Cannot open input file " << input_path << endl;
+    if (!verifier.readInput(argv[1]))
         return 1;
-    }
 
-    string p_hex, g_hex, y_hex, m_hex, r_hex, h_hex;
-    inputFile >> p_hex >> g_hex >> y_hex >> m_hex >> r_hex >> h_hex;
-    inputFile.close();
+    bool result = verifier.elgamalVerify();
 
-    BigNum p(p_hex);
-    BigNum g(g_hex);
-    BigNum publicKey(y_hex); // Đây là y
-    BigNum m(m_hex);
-    BigNum r(r_hex);
-    BigNum s(h_hex); // Trong ảnh gọi là
-
-    // Thực hiện xác thực
-    // Lưu ý: Hàm elgamalVerify cần code lại hoặc giữ nguyên logic nhưng truyền đúng tham số
-    // Verify check: g^m = y^r * r^s (mod p)
-    cout << "input are:" << endl;
-    cout << "p: " << p.toReversedHex() << endl;
-    cout << "g: " << g.toReversedHex() << endl;
-    cout << "y: " << publicKey.toReversedHex() << endl;
-    cout << "m: " << m.toReversedHex() << endl;
-    cout << "r: " << r.toReversedHex() << endl;
-    cout << "s: " << s.toReversedHex() << endl;
-
-    bool isValid = elgamalVerify(m, r, s, publicKey, g, p);
-
-    ofstream outputFile(output_path);
-    if (!outputFile.is_open())
-    {
-        cerr << "Error: Cannot open output file " << output_path << endl;
+    if (!verifier.writeOutput(argv[2], result))
         return 1;
-    }
-
-    // Xuất kết quả xác thực
-    outputFile << (isValid ? "1" : "0");
-    outputFile.close();
 
     return 0;
 }
+
