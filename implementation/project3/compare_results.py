@@ -247,7 +247,7 @@ def main():
     
     # Get the script directory
     script_dir = Path(__file__).parent
-    exe_path = script_dir / "a.exe"
+    exe_path = script_dir / "main.exe"
     
     # Allow user to specify test directory via command line
     if len(sys.argv) > 1:
@@ -257,10 +257,8 @@ def main():
         test_dir_generated = script_dir / "testcase_generated"
         test_dir_default = script_dir / "project_02_03"
         
-        if test_dir_generated.exists():
-            test_dir = test_dir_generated
-        else:
-            test_dir = test_dir_default
+
+        test_dir = test_dir_default
     
     # Check if a.exe exists
     if not exe_path.exists():

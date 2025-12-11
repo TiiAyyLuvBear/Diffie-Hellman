@@ -32,6 +32,7 @@ public:
     BigNum operator/(const BigNum &b) const;
     static BigNum gcd(const BigNum &a, const BigNum &b);
     static BigNum modInverse(const BigNum &a, const BigNum &m);
+    static BigNum modPow(const BigNum &base, const BigNum &exp, const BigNum &mod);
 };
 
 // ========================== BigNum Implementation ==========================
@@ -259,6 +260,23 @@ BigNum BigNum::modInverse(const BigNum &a, const BigNum &m) {
     return inv;
 }
 
+BigNum BigNum::modPow(const BigNum &base, const BigNum &exp, const BigNum &mod) {
+    if (mod.cmp(BigNum(1)) == 0) return BigNum(0);
+    
+    BigNum result(1);
+    BigNum b = base % mod;
+    BigNum e = exp;
+    
+    while (!e.isZero()) {
+        if (e.isOdd()) {
+            result = (result * b) % mod;
+        }
+        e = e.div2();
+        b = (b * b) % mod;
+    }
+    return result;
+}
+
 // ========================== CLASS ElGamalCrypto ==========================
 
 class ElGamalCrypto {
@@ -276,8 +294,6 @@ public:
     void decrypt();
     void writeOutput(const string &filename);
     
-    BigNum modPow(const BigNum &base, const BigNum &exp, const BigNum &mod);
-    
     BigNum getP() const { return p; }
     BigNum getG() const { return g; }
     BigNum getX() const { return x; }
@@ -288,24 +304,6 @@ public:
 };
 
 // ========================== ElGamalCrypto Implementation ==========================
-
-// Modular exponentiation: (base^exp) mod mod
-BigNum ElGamalCrypto::modPow(const BigNum &base, const BigNum &exp, const BigNum &mod) {
-    if (mod.cmp(BigNum(1)) == 0) return BigNum(0);
-    
-    BigNum result(1);
-    BigNum b = base % mod;
-    BigNum e = exp;
-    
-    while (!e.isZero()) {
-        if (e.isOdd()) {
-            result = (result * b) % mod;
-        }
-        e = e.div2();
-        b = (b * b) % mod;
-    }
-    return result;
-}
 
 // Read input: p, g, x, c1, c2 (5 lines)
 bool ElGamalCrypto::readInput(const string &filename) {
@@ -327,12 +325,12 @@ bool ElGamalCrypto::readInput(const string &filename) {
 
 // Compute public key: h = g^x mod p
 void ElGamalCrypto::computePublicKey() {
-    h = modPow(g, x, p);
+    h = BigNum::modPow(g, x, p);
 }
 
 // Decrypt: m = c2 * (c1^x)^(-1) mod p
 void ElGamalCrypto::decrypt() {
-    BigNum c1x = modPow(c1, x, p);
+    BigNum c1x = BigNum::modPow(c1, x, p);
     BigNum c1xInv = BigNum::modInverse(c1x, p);
     m = (c2 * c1xInv) % p;
 }
