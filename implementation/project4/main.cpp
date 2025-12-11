@@ -335,6 +335,7 @@ BigNum BigNum::modPow(const BigNum &base, BigNum exp, const BigNum &mod)
     }
     return result;
 }
+
 class ElgamalVerifier
 {
 private:
@@ -342,7 +343,6 @@ private:
     BigNum m, r, s;
 
 public:
-    // Đọc dữ liệu đầu vào
     bool readInput(const string &input_path)
     {
         ifstream inputFile(input_path);
@@ -366,7 +366,6 @@ public:
         return true;
     }
 
-    // Hàm verify như bạn có, giữ nguyên logic
     bool elgamalVerify() const
     {
         if (r.cmp(BigNum(0)) <= 0 || r.cmp(p) >= 0)
@@ -389,7 +388,6 @@ public:
         return left.cmp(right) == 0;
     }
 
-    // Ghi output
     bool writeOutput(const string &output_path, bool result)
     {
         ofstream outputFile(output_path);
